@@ -43,7 +43,8 @@ pub extern "C" fn get_tx_str(
     from_sig_len: u32,
     to_ptr: *mut u8,
     to_len: u32,
-    trans_amount: u64,
+    trans_amount_ptr: *mut u8,
+    trans_amount_len: u32,
     url_ptr: *mut u8,
     url_len: u32,
     tick_ptr: *mut u8,
@@ -52,6 +53,9 @@ pub extern "C" fn get_tx_str(
     let from_key = unsafe { slice::from_raw_parts(from_sig_ptr, from_sig_len as usize) };
     let to_pub_key = unsafe { slice::from_raw_parts(to_ptr, to_len as usize) };
     let tick = unsafe { slice::from_raw_parts(tick_ptr, tick_len as usize) };
+    let trans_amount =
+        unsafe { slice::from_raw_parts(trans_amount_ptr, trans_amount_len as usize) };
+    let trans_amount_str = std::str::from_utf8(trans_amount).unwrap();
     let url = unsafe { slice::from_raw_parts(url_ptr, url_len as usize) };
     let url_str = std::str::from_utf8(url).unwrap();
 
@@ -83,6 +87,7 @@ pub extern "C" fn get_tx_str(
             op.add_input(TxoRef::Absolute(sid), oar, None, None, t_amout)
                 .unwrap();
             if input_amount > TX_FEE_MIN {
+                // if input big than trans amount
                 break;
             }
         }
@@ -92,7 +97,7 @@ pub extern "C" fn get_tx_str(
         "brc-20".to_string(),
         "transfer".to_string(),
         std::str::from_utf8(tick).unwrap().to_string(),
-        trans_amount.to_string(),
+        trans_amount_str.to_string(),
     );
     let memo = serde_json::to_string(&memo_struct).unwrap();
     let template =
@@ -111,7 +116,7 @@ pub extern "C" fn get_tx_str(
         asset_record_type,
         *BLACK_HOLE_PUBKEY,
     );
-    // build operation
+    // build output
     let trans_build = op
         .add_output(&template_fee, None, None, None, None)
         .and_then(|b| b.add_output(&template, None, None, None, Some(memo)))
