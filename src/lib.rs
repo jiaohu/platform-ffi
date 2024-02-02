@@ -111,7 +111,7 @@ pub extern "C" fn get_tx_str(
         asset_record_type,
         *BLACK_HOLE_PUBKEY,
     );
-    // build output
+    // build operation
     let trans_build = op
         .add_output(&template_fee, None, None, None, None)
         .and_then(|b| b.add_output(&template, None, None, None, Some(memo)))
