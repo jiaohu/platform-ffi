@@ -16,3 +16,4 @@ finutils = { git = "https://github.com/FindoraNetwork/platform.git", branch = "m
 ledger = { git = "https://github.com/FindoraNetwork/platform.git", branch = "main"}
 zei = { git = "https://github.com/FindoraNetwork/zei.git", branch = "stable-main" }
 anyhow = "1.0.79"
+globutils = { git = "https://github.com/FindoraNetwork/platform-lib-utils", tag = "v1.0.0" }

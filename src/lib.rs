@@ -1,19 +1,20 @@
 extern crate core;
 
+use anyhow::{anyhow, Result};
 use core::slice;
-use std::ffi::CString;
-use zei::serialization::ZeiFromToBytes;
-use zei::xfr::sig::{XfrSecretKey, XfrPublicKey};
-use ledger::data_model::{ASSET_TYPE_FRA, TxoRef, TxoSID};
-use finutils::{
-    txn_builder::TransferOperationBuilder
-};
-use zei::xfr::asset_record::{AssetRecordType, open_blind_asset_record};
-use zei::xfr::structs::{AssetRecordTemplate, BlindAssetRecord};
-use anyhow::anyhow;
 use finutils::txn_builder::TransactionBuilder;
+use finutils::txn_builder::TransferOperationBuilder;
+use ledger::data_model::{TxoRef, TxoSID, Utxo, ASSET_TYPE_FRA, b64dec};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::HashMap;
+use std::ffi::CString;
 use std::os::raw::c_char;
+use zei::serialization::ZeiFromToBytes;
+use zei::xfr::asset_record::{open_blind_asset_record, AssetRecordType};
+use zei::xfr::sig::XfrPublicKey;
+use zei::xfr::structs::{AssetRecordTemplate, OwnerMemo};
+use globutils::wallet;
 
 #[no_mangle]
 pub extern "C" fn add(a: u64, b: u64) -> u64 {
@@ -30,74 +31,144 @@ struct Memo {
 
 impl Memo {
     fn new(p: String, op: String, tick: String, amt: String) -> Self {
-        Self {
-            p,
-            op,
-            tick,
-            amt,
-        }
+        Self { p, op, tick, amt }
     }
 }
 
 #[no_mangle]
-pub extern "C" fn send(
-    from_sig_ptr: *mut u8, from_sig_len: u32,
-    to_ptr: *mut u8, to_len: u32,
-    txosid: u64,
-    assert_record_ptr: *mut u8, assert_record_len: u8,
-    input_amount: u64,
+pub extern "C" fn get_tx_str(
+    from_sig_ptr: *mut u8,
+    from_sig_len: u32,
+    to_ptr: *mut u8,
+    to_len: u32,
     trans_amount: u64,
-    seq_id: u64,
+    url_ptr: *mut u8,
+    url_len: u32,
     tick_ptr: *mut u8,
     tick_len: u8,
 ) -> *const c_char {
-    let from_key = unsafe {
-        slice::from_raw_parts(from_sig_ptr, from_sig_len as usize)
-    };
-    let to_pub_key = unsafe {
-        slice::from_raw_parts(to_ptr, to_len as usize)
-    };
-    let assert_record = unsafe {
-        slice::from_raw_parts(assert_record_ptr, assert_record_len as usize)
-    };
-    let tick = unsafe {
-        slice::from_raw_parts(tick_ptr, tick_len as usize)
-    };
-    let txo_sid = TxoRef::Absolute(TxoSID(txosid));
-    let asset_record = serde_json::from_slice::<BlindAssetRecord>(assert_record).unwrap();
+    let from_key = unsafe { slice::from_raw_parts(from_sig_ptr, from_sig_len as usize) };
+    let to_pub_key = unsafe { slice::from_raw_parts(to_ptr, to_len as usize) };
+    let tick = unsafe { slice::from_raw_parts(tick_ptr, tick_len as usize) };
+    let url = unsafe { slice::from_raw_parts(url_ptr, url_len as usize) };
+    let url_str = std::str::from_utf8(url).unwrap();
+    let to_pub_str = std::str::from_utf8(to_pub_key).unwrap();
 
-    let from = XfrSecretKey::zei_from_bytes(from_key).unwrap().into_keypair();
-    let to = XfrPublicKey::zei_from_bytes(to_pub_key).unwrap();
-    let oar = open_blind_asset_record(&asset_record, &None, &from)
-        .map_err(|e| anyhow!("Could not open asset record: {}", e)).unwrap();
+    let from_key_str = std::str::from_utf8(from_key).unwrap();
+    let from = wallet::restore_keypair_from_mnemonic_default(from_key_str).unwrap();
+
+    let aaaas = b64dec(to_pub_key).unwrap();
+    let to = XfrPublicKey::zei_from_bytes(aaaas.as_slice()).unwrap();
     // let code = AssetTypeCode {
     //     val: ASSET_TYPE_FRA,
     // }.to_base64();
     let asset_record_type = AssetRecordType::from_flags(false, false);
 
-    // TODO check gas fee to from or BLACK_HOLE_PUBKEY
-    let template_fee = AssetRecordTemplate::with_no_asset_tracing(
-        input_amount - trans_amount, ASSET_TYPE_FRA, asset_record_type, from.get_pk(),
+    let mut op = TransferOperationBuilder::new();
+
+    // build input
+    let mut input_amount = 0;
+    let mut t_amout;
+    let mut diff = 0;
+    let utxos = get_owned_utxos_x(url_str, wallet::public_key_to_base64(from.get_pk_ref()).as_str()).unwrap();
+    for (sid, (utxo, owner_memo)) in utxos.into_iter() {
+        let oar = open_blind_asset_record(&utxo.0.record, &owner_memo, &from).unwrap();
+        if oar.asset_type != ASSET_TYPE_FRA {
+            continue;
+        }
+        t_amout = oar.amount;
+        input_amount += t_amout;
+
+        if input_amount >= trans_amount {
+            // if input big than trans amount
+            op.add_input(TxoRef::Absolute(sid), oar, None, None, diff).unwrap();
+            break;
+        } else {
+            // if input small than trans amount
+            diff = trans_amount - input_amount;
+            op.add_input(TxoRef::Absolute(sid), oar, None, None, t_amout).unwrap();
+        }
+    }
+
+
+    let memo_struct = Memo::new(
+        "brc-20".to_string(),
+        "transfer".to_string(),
+        std::str::from_utf8(tick).unwrap().to_string(),
+        input_amount.to_string(),
+    );
+    let memo = serde_json::to_string(&memo_struct).unwrap();
+    let template = AssetRecordTemplate::with_no_asset_tracing(
+        trans_amount,
+        ASSET_TYPE_FRA,
+        asset_record_type,
+        to,
     );
 
-
-    let memo_struct = Memo::new("brc-20".to_string(), "transfer".to_string(), std::str::from_utf8(tick).unwrap().to_string(), input_amount.to_string());
-    let memo = serde_json::to_string(&memo_struct).unwrap();
-    let template = AssetRecordTemplate::with_no_asset_tracing(trans_amount, ASSET_TYPE_FRA, asset_record_type, to);
-
-    let op = TransferOperationBuilder::new()
-        .add_input(txo_sid, oar, None, None, input_amount)
-        .and_then(|b| b.add_output(&template_fee, None, None, None, None))
+    // TODO check gas fee to from or BLACK_HOLE_PUBKEY
+    let template_fee = AssetRecordTemplate::with_no_asset_tracing(
+        input_amount - trans_amount,
+        ASSET_TYPE_FRA,
+        asset_record_type,
+        from.get_pk(),
+    );
+    // build output
+    let trans_build = op
+        .add_output(&template_fee, None, None, None, None)
         .and_then(|b| b.add_output(&template, None, None, None, Some(memo)))
         .and_then(|b| b.transaction())
         .unwrap();
 
-    let tx = TransactionBuilder::from_seq_id(seq_id).add_operation(op).sign_to_map(&from).clone().take_transaction();
+    let mut builder = get_transaction_builder(url_str).unwrap();
+
+    let tx: finutils::transaction::BuildTransaction = builder
+        .add_operation(trans_build)
+        .sign_to_map(&from)
+        .clone()
+        .take_transaction();
 
     let tx_str = serde_json::to_string(&tx).unwrap();
     let c_string = CString::new(tx_str).unwrap();
     c_string.as_ptr() as *const c_char
 }
+
+#[no_mangle]
+pub extern "C" fn get_seq_id(url_ptr: *mut u8, url_len: u32) -> u64 {
+    let url = unsafe { slice::from_raw_parts(url_ptr, url_len as usize) };
+    let url_str = std::str::from_utf8(url).unwrap();
+    let result = get_transaction_builder(url_str).unwrap();
+    result.get_seq_id()
+}
+
+fn get_transaction_builder(url: &str) -> Result<TransactionBuilder> {
+    let url = format!("{}/global_state", url);
+    attohttpc::get(&url)
+        .send()
+        .and_then(|resp| resp.error_for_status())
+        .and_then(|resp| resp.bytes())
+        .map_err(|e| anyhow!("{:?}", e))
+        .and_then(|bytes| {
+            serde_json::from_slice::<(Value, u64, Value)>(&bytes).map_err(|e| anyhow!("{:?}", e))
+        })
+        .map(|resp| TransactionBuilder::from_seq_id(resp.1))
+}
+
+fn get_owned_utxos_x(
+    url: &str,
+    pubkey: &str,
+) -> Result<HashMap<TxoSID, (Utxo, Option<OwnerMemo>)>> {
+    let url = format!("{}/owned_utxos/{}", url, pubkey);
+
+    attohttpc::get(url)
+        .send()
+        .and_then(|resp| resp.bytes())
+        .map_err(|e| anyhow! {"{:?}", e})
+        .and_then(|b| {
+            serde_json::from_slice::<HashMap<TxoSID, (Utxo, Option<OwnerMemo>)>>(&b)
+                .map_err(|e| anyhow!("{:?}", e))
+        })
+}
+
 
 #[cfg(test)]
 mod tests {

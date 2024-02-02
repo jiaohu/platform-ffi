@@ -1473,6 +1473,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "finutils",
+ "globutils",
  "hex",
  "ledger",
  "serde",
@@ -1853,7 +1854,7 @@ checksum = "4271d37baee1b8c7e4b708028c57d816cf9d2434acb33a549475f78c181f6253"
 [[package]]
 name = "globutils"
 version = "0.2.11"
-source = "git+https://github.com/FindoraNetwork/platform-lib-utils.git?tag=v1.0.0#c5317a372b7cb0a2b546416d378cb9511ec6b86e"
+source = "git+https://github.com/FindoraNetwork/platform-lib-utils?tag=v1.0.0#c5317a372b7cb0a2b546416d378cb9511ec6b86e"
 dependencies = [
  "attohttpc",
  "base64 0.12.3",
