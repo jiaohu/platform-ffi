@@ -420,6 +420,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "attohttpc"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e57d6e7a84f33ff3316e97af3180fe7f86597a6a60161c0be70c0e45f382620"
+dependencies = [
+ "flate2",
+ "http",
+ "log",
+ "rustls 0.21.10",
+ "serde",
+ "serde_json",
+ "url",
+ "webpki 0.22.4",
+ "webpki-roots 0.23.1",
+]
+
+[[package]]
 name = "atty"
 version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -834,7 +851,7 @@ name = "config"
 version = "0.1.0"
 source = "git+https://github.com/FindoraNetwork/platform.git?branch=main#ff1759e7ca037bdf5d4f62e78e9045fe244e5b17"
 dependencies = [
- "attohttpc",
+ "attohttpc 0.23.1",
  "btm",
  "clap",
  "globutils",
@@ -1472,6 +1489,7 @@ name = "findora-platform-ffi"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "attohttpc 0.25.0",
  "finutils",
  "globutils",
  "hex",
@@ -1486,7 +1504,7 @@ name = "finutils"
 version = "0.2.11"
 source = "git+https://github.com/FindoraNetwork/platform.git?branch=main#ff1759e7ca037bdf5d4f62e78e9045fe244e5b17"
 dependencies = [
- "attohttpc",
+ "attohttpc 0.23.1",
  "base64 0.12.3",
  "chaindev",
  "clap",
@@ -1856,7 +1874,7 @@ name = "globutils"
 version = "0.2.11"
 source = "git+https://github.com/FindoraNetwork/platform-lib-utils?tag=v1.0.0#c5317a372b7cb0a2b546416d378cb9511ec6b86e"
 dependencies = [
- "attohttpc",
+ "attohttpc 0.23.1",
  "base64 0.12.3",
  "bech32",
  "bip0039",
@@ -3788,6 +3806,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls"
+version = "0.21.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f9d5a6813c0759e4609cd494e8e725babae6a2ca7b62a5536a13daaec6fcb7ba"
+dependencies = [
+ "log",
+ "ring 0.17.7",
+ "rustls-webpki 0.101.7",
+ "sct 0.7.1",
+]
+
+[[package]]
 name = "rustls-native-certs"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3797,6 +3827,26 @@ dependencies = [
  "rustls 0.19.1",
  "schannel",
  "security-framework",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.100.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f6a5fc258f1c1276dfe3016516945546e2d5383911efc0fc4f1cdc5df3a4ae3"
+dependencies = [
+ "ring 0.16.20",
+ "untrusted 0.7.1",
+]
+
+[[package]]
+name = "rustls-webpki"
+version = "0.101.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b6275d1ee7a1cd780b64aca7726599a1dbc893b1e64144529e55c3c2f745765"
+dependencies = [
+ "ring 0.17.7",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -5219,6 +5269,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6c71e40d7d2c34a5106301fb632274ca37242cd0c9d3e64dbece371a40a2d87"
 dependencies = [
  "webpki 0.22.4",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b03058f88386e5ff5310d9111d53f48b17d732b401aeb83a8d5190f2ac459338"
+dependencies = [
+ "rustls-webpki 0.100.3",
 ]
 
 [[package]]
