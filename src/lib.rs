@@ -61,8 +61,8 @@ pub extern "C" fn get_tx_str(
 
     let from_key_str = std::str::from_utf8(from_key).unwrap();
     let from = wallet::restore_keypair_from_mnemonic_default(from_key_str).unwrap();
-    let aaaas = b64dec(to_pub_key).unwrap();
-    let to = XfrPublicKey::zei_from_bytes(aaaas.as_slice()).unwrap();
+    let base64_dec_to = b64dec(to_pub_key).unwrap();
+    let to = XfrPublicKey::zei_from_bytes(base64_dec_to.as_slice()).unwrap();
     let asset_record_type = AssetRecordType::from_flags(false, false);
 
     let mut op = TransferOperationBuilder::new();
