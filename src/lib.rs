@@ -41,6 +41,8 @@ impl Memo {
 pub extern "C" fn get_tx_str(
     from_sig_ptr: *mut u8,
     from_sig_len: u32,
+    fra_receiver_ptr: *mut u8,
+    fra_receiver_len: u32,
     to_ptr: *mut u8,
     to_len: u32,
     trans_amount_ptr: *mut u8,
@@ -49,9 +51,13 @@ pub extern "C" fn get_tx_str(
     url_len: u32,
     tick_ptr: *mut u8,
     tick_len: u8,
+    fra_price_ptr: *mut u8,
+    fra_price_len: u32,
 ) -> *const c_char {
     let from_key = unsafe { slice::from_raw_parts(from_sig_ptr, from_sig_len as usize) };
     let to_pub_key = unsafe { slice::from_raw_parts(to_ptr, to_len as usize) };
+    let fra_receiver_key =
+        unsafe { slice::from_raw_parts(fra_receiver_ptr, fra_receiver_len as usize) };
     let tick = unsafe { slice::from_raw_parts(tick_ptr, tick_len as usize) };
     let trans_amount =
         unsafe { slice::from_raw_parts(trans_amount_ptr, trans_amount_len as usize) };
@@ -59,10 +65,17 @@ pub extern "C" fn get_tx_str(
     let url = unsafe { slice::from_raw_parts(url_ptr, url_len as usize) };
     let url_str = std::str::from_utf8(url).unwrap();
 
+    let fra_amount = unsafe { slice::from_raw_parts(fra_price_ptr, fra_price_len as usize) };
+    let fra_amount_str = std::str::from_utf8(fra_amount).unwrap();
+    let num = fra_amount_str.parse::<f64>().unwrap();
+    let fra_price = (num * 1000000.0) as u64;
     let from_key_str = std::str::from_utf8(from_key).unwrap();
     let from = wallet::restore_keypair_from_mnemonic_default(from_key_str).unwrap();
-    let base64_dec_to = b64dec(to_pub_key).unwrap();
-    let to = XfrPublicKey::zei_from_bytes(base64_dec_to.as_slice()).unwrap();
+    let to_dec = b64dec(to_pub_key).unwrap();
+    let to = XfrPublicKey::zei_from_bytes(to_dec.as_slice()).unwrap();
+    let fra_dec = b64dec(fra_receiver_key).unwrap();
+    let fra_receiver = XfrPublicKey::zei_from_bytes(fra_dec.as_slice()).unwrap();
+
     let asset_record_type = AssetRecordType::from_flags(false, false);
 
     let mut op = TransferOperationBuilder::new();
@@ -86,7 +99,7 @@ pub extern "C" fn get_tx_str(
         if t_amout != 0 {
             op.add_input(TxoRef::Absolute(sid), oar, None, None, t_amout)
                 .unwrap();
-            if input_amount > TX_FEE_MIN {
+            if input_amount > fra_price + TX_FEE_MIN {
                 // if input big than trans amount
                 break;
             }
@@ -104,7 +117,7 @@ pub extern "C" fn get_tx_str(
         AssetRecordTemplate::with_no_asset_tracing(0, ASSET_TYPE_FRA, asset_record_type, to);
 
     let template_from = AssetRecordTemplate::with_no_asset_tracing(
-        input_amount - TX_FEE_MIN,
+        input_amount - TX_FEE_MIN - fra_price,
         ASSET_TYPE_FRA,
         asset_record_type,
         from.get_pk(),
@@ -116,17 +129,25 @@ pub extern "C" fn get_tx_str(
         asset_record_type,
         *BLACK_HOLE_PUBKEY,
     );
+
+    let receive_fra = AssetRecordTemplate::with_no_asset_tracing(
+        fra_price,
+        ASSET_TYPE_FRA,
+        asset_record_type,
+        fra_receiver,
+    );
     // build output
     let trans_build = op
         .add_output(&template_fee, None, None, None, None)
         .and_then(|b| b.add_output(&template, None, None, None, Some(memo)))
         .and_then(|b| b.add_output(&template_from, None, None, None, None))
+        .and_then(|b| b.add_output(&receive_fra, None, None, None, None))
         .and_then(|b| b.create(TransferType::Standard))
         .and_then(|b| b.sign(&from))
         .and_then(|b| b.transaction())
         .unwrap();
 
-    let mut builder = get_transaction_builder(url_str).unwrap();
+    let mut builder: TransactionBuilder = get_transaction_builder(url_str).unwrap();
 
     let tx: finutils::transaction::BuildTransaction = builder
         .add_operation(trans_build)
